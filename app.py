@@ -8,7 +8,7 @@ from collections import Counter
 import sys
 
 app = Flask(__name__)
-app.secret_key = = st.secrets('SECRET_KEY')
+app.secret_key = = st.secrets['SECRET_KEY']
 
 file_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 
