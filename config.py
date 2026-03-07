@@ -1,3 +1,5 @@
+import os
+
 mysql_credentials = {
     'host':  os.environ['DB_HOST'],
     'user': os.environ['DB_USER'],
