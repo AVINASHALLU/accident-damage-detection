@@ -1,8 +1,9 @@
 import os
+import streamlit as st
 
 mysql_credentials = {
-    'host':  os.environ['DB_HOST'],
-    'user': os.environ['DB_USER'],
-    'password' : os.environ['DB_PASSWORD'],
-    'database' : os.environ['DB_NAME']
+    'host': st.secrets['DB_HOST'],
+    'user': st.secrets['DB_USER'],
+    'password' : st.secrets['DB_PASSWORD'],
+    'database' : st.secrets['DB_NAME']
 }
