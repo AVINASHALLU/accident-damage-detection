@@ -144,4 +144,4 @@ def get_part_name_from_id(class_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=False,port=6000)
