@@ -6,6 +6,7 @@ import os
 from ultralytics import YOLO
 from collections import Counter
 import sys
+import streamlit as st
 
 app = Flask(__name__)
 app.secret_key =  st.secrets['SECRET_KEY']
