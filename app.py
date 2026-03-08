@@ -26,7 +26,7 @@ def home():
    return render_template('dashboard.html',brands=get_brands(),brand_models=get_brand_models())
 
 # Load YOLO model
-model_path = fr"{file_path}\\models\\model weights\\best_yolo_v11.pt"
+model_path = fr"{file_path}/models/model weights/best_yolo_v11.pt"
 model = YOLO(model_path)
 
 
@@ -46,7 +46,7 @@ def dashboard():
             return render_template('dashboard.html',brands=get_brands(),brand_models=get_brand_models())
         
         # Save the uploaded image
-        image_path = os.path.join(fr'{file_path}\\static\\process', 'uploaded_image.jpg')
+        image_path = os.path.join(fr'{file_path}/static/process', 'uploaded_image.jpg')
         print("File uploaded successfully")
         
         file.save(image_path)
@@ -64,7 +64,7 @@ def dashboard():
             return render_template('estimate.html', original_image='process/uploaded_image.jpg', detected_image='process/uploaded_image.jpg', part_prices={}, car_model=car_model, car_brand=car_brand, damage_detected=False)
 
         # Save the image with detections
-        detected_image_path = os.path.join(fr'{file_path}\\static\\process', 'detected_image.jpg')
+        detected_image_path = os.path.join(fr'{file_path}/static/process', 'detected_image.jpg')
         detected_image_path = result[0].save(detected_image_path)
         print(f"Detected image path : {detected_image_path}")
         # Fetch part prices from the database
