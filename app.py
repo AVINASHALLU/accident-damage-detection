@@ -1,147 +1,365 @@
-from flask import Flask, render_template, request, flash
+import streamlit as st
 import config
+import config_local
 import mysql.connector as connector
-from werkzeug.utils import secure_filename
 import os
 from ultralytics import YOLO
 from collections import Counter
+from dotenv import load_dotenv
+from PIL import Image
+import tempfile
 import sys
-import streamlit as st
 
-app = Flask(__name__)
-app.secret_key =  st.secrets['SECRET_KEY']
+load_dotenv()
+
+# ---------------- PAGE CONFIG ---------------- #
+
+st.set_page_config(
+    page_title="Vehicle Damage Detection",
+    page_icon="🚗",
+    layout="centered"
+)
+
+# ---------------- SIMPLE ACCESSIBLE UI ---------------- #
+
+st.markdown("""
+<style>
+
+/* Main Background */
+.stApp {
+    background-color: #f4f6f9;
+}
+
+/* Main Container 
+.main-box {
+    background-color: white;
+    padding: 25px;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    margin-top: 20px;
+}*/
+
+/* Title */
+.title {
+    text-align: center;
+    color: #1e3a8a;
+    font-size: 36px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+/* Subtitle */
+.subtitle {
+    text-align: center;
+    color: #4b5563;
+    margin-bottom: 25px;
+}
+
+/* Section Box 
+.section-box {
+    background-color: #ffffff;
+    padding: 18px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+*/
+/* Button */
+.stButton > button {
+    width: 100%;
+    height: 45px;
+    border-radius: 8px;
+    border: none;
+    background-color: #2563eb;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Input Labels */
+label {
+    font-weight: 600 !important;
+    color: #111827 !important;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: white;
+    border-right: 1px solid #d1d5db;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- HEADER ---------------- #
+
+st.markdown(
+    '<div class="title">🚗 Vehicle Damage Detection</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">AI-powered vehicle inspection and repair estimation</div>',
+    unsafe_allow_html=True
+)
+
+# ---------------- LOAD MODEL ---------------- #
 
 file_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-def connect_to_db():
-    try:
-        connection = connector.connect(**config.mysql_credentials)
-        return connection
-    except connector.Error as e:
-        print(f"Error connecting to database: {e}")
-        return None
-        
-@app.route('/')
-def home():
-   return render_template('dashboard.html',brands=get_brands(),brand_models=get_brand_models())
+model_path = f"{file_path}/models/model weights/best.pt"
 
-# Load YOLO model
-model_path = fr"{file_path}/models/model weights/best_yolo_v11.pt"
 model = YOLO(model_path)
 
+# ---------------- DATABASE ---------------- #
 
-@app.route('/dashboard', methods=['GET', 'POST'])
-def dashboard():
-    if request.method == 'POST':
-        file = request.files.get('image')
-        car_brand = request.form.get('carBrand')
-        car_model = request.form.get('carModel')
-        if not file:
-            flash('Please upload an image.', 'error')
-            return render_template('dashboard.html',brands=get_brands(),brand_models=get_brand_models())
+def connect_to_db():
 
-        filename = secure_filename(file.filename)
-        if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            flash('Invalid file type, Only .png, .jpg, .jpeg supported', 'error')
-            return render_template('dashboard.html',brands=get_brands(),brand_models=get_brand_models())
-        
-        # Save the uploaded image
-        image_path = os.path.join(fr'{file_path}/static/process', 'uploaded_image.jpg')
-        print("File uploaded successfully")
-        
-        file.save(image_path)
-        # print(f"Upload image path : {image_path}")
-        # Make predictions using YOLO
-        result = model(image_path)
-        detected_objects = result[0].boxes
-        class_ids = [box.cls.item() for box in detected_objects]
-        class_counts = Counter(class_ids)
-        print(f"Class counts : {class_counts}")
+    try:
+        connection = connector.connect(**config.mysql_credentials)  #cloud config
+        return connection
 
-        # Check if any damage is detected
-        if not class_counts:
-            flash('No damage detected in the uploaded image.', 'error')
-            return render_template('estimate.html', original_image='process/uploaded_image.jpg', detected_image='process/uploaded_image.jpg', part_prices={}, car_model=car_model, car_brand=car_brand, damage_detected=False)
+    except connector.Error as e:
+        st.error(f"Database connection error: {e}")
+        return None
 
-        # Save the image with detections
-        detected_image_path = os.path.join(fr'{file_path}/static/process', 'detected_image.jpg')
-        detected_image_path = result[0].save(detected_image_path)
-        print(f"Detected image path : {detected_image_path}")
-        # Fetch part prices from the database
-        part_prices = get_part_prices(class_counts,car_brand,car_model)
-        return render_template('estimate.html', original_image='process/uploaded_image.jpg', detected_image='process/detected_image.jpg', part_prices=part_prices,car_model=car_model,car_brand=car_brand, damage_detected=True)
-    
-    return render_template('dashboard.html', brands=get_brands(),brand_models=get_brand_models(), original_image='process/uploaded_image.jpg', detected_image='process/detected_image.jpg', )
 
 def get_brands():
+
     connection = connect_to_db()
+
+    brands_list = []
+
     if connection:
-        try:
-            with connection.cursor(dictionary=True) as cursor:
-                cursor.execute("SELECT distinct brand FROM car_models")
-                brands = cursor.fetchall()
-                brands_list=[]
-                for brand in brands:
-                    brands_list.append(brand['brand'])
-                return brands_list
-        except connector.Error as e:
-            print(f"Error executing query: {e}")
-            return {}
-    print("Connection failed")
-    return {}
+
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("SELECT DISTINCT brand FROM car_models")
+
+        brands = cursor.fetchall()
+
+        for brand in brands:
+            brands_list.append(brand['brand'])
+
+    return brands_list
+
 
 def get_brand_models():
-    connection = connect_to_db()
-    if connection:
-        try:
-            with connection.cursor(dictionary=True) as cursor:
-                cursor.execute("SELECT distinct brand,model FROM car_models")
-                brand_models = cursor.fetchall()
-               # print(brand_models)
-                return brand_models
-        except connector.Error as e:
-            print(f"Error executing query: {e}")
-            return {}
-    print("Connection failed")
-    return {}
 
-def get_part_prices(class_counts, car_brand, car_model):
     connection = connect_to_db()
+
     if connection:
-        try:
-            with connection.cursor(dictionary=True) as cursor:
-                # Fetch part prices
-                prices = {}
-                for class_id,count in class_counts.items():
-                    print(class_id)
-                    part_name = get_part_name_from_id(class_id)
-                    print(part_name)
-                    if part_name:
-                        cursor.execute(
-                            "SELECT price FROM car_models WHERE brand = %s AND model = %s AND part = %s",
-                            (car_brand, car_model, part_name)
-                        )
-                        price_data = cursor.fetchone()
-                        # Ensure the cursor is cleared before the next query
-                        cursor.fetchall()  # Fetch any remaining results to clear the cursor
-                        if price_data:
-                            price_per_part = price_data['price']
-                            prices[part_name] = price_per_part
-                print(prices)
-                return prices
-        except connector.Error as e:
-            print(f"Error executing query: {e}")
-            return {}
-    print("Connection failed")
-    return {}
+
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("SELECT DISTINCT brand,model FROM car_models")
+
+        brand_models = cursor.fetchall()
+
+        return brand_models
+
+    return []
 
 
 def get_part_name_from_id(class_id):
-    class_names = ['Bonnet', 'Bumper', 'Dickey', 'Door', 'Fender', 'Light', 'Windshield']
+
+    class_names = [
+        'Bonnet',
+        'Bumper',
+        'Dickey',
+        'Door',
+        'Fender',
+        'Light',
+        'Windshield'
+    ]
+
     if 0 <= class_id < len(class_names):
         return class_names[int(class_id)]
+
     return None
 
 
-if __name__ == '__main__':
-    app.run(debug=False,port=8510)
+def get_part_prices(class_counts, car_brand, car_model):
+
+    connection = connect_to_db()
+
+    prices = {}
+
+    if connection:
+
+        cursor = connection.cursor(dictionary=True)
+
+        for class_id, count in class_counts.items():
+
+            part_name = get_part_name_from_id(class_id)
+
+            if part_name:
+
+                cursor.execute(
+                    """
+                    SELECT price
+                    FROM car_models
+                    WHERE brand=%s AND model=%s AND part=%s
+                    """,
+                    (car_brand, car_model, part_name)
+                )
+
+                price_data = cursor.fetchone()
+
+                if price_data:
+                    prices[part_name] = price_data['price']
+
+    return prices
+
+# ---------------- SIDEBAR ---------------- #
+
+with st.sidebar:
+
+    st.title("Menu")
+
+    st.write("✔ Upload Vehicle Image")
+    st.write("✔ Detect Damages")
+    st.write("✔ Estimate Repair Cost")
+
+    st.info("YOLOv26 AI Detection System")
+
+# ---------------- MAIN CONTENT ---------------- #
+
+st.markdown('<div class="main-box">', unsafe_allow_html=True)
+
+brands = get_brands()
+
+brand_models = get_brand_models()
+
+# ---------------- BRAND SELECTION ---------------- #
+
+#st.markdown('<div class="section-box">', unsafe_allow_html=True)
+
+selected_brand = st.selectbox(
+    "Select Car Brand",
+    brands
+)
+
+models = [
+    m['model']
+    for m in brand_models
+    if m['brand'] == selected_brand
+]
+
+selected_model = st.selectbox(
+    "Select Car Model",
+    models
+)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------- FILE UPLOAD ---------------- #
+
+#st.markdown('<div class="section-box">', unsafe_allow_html=True)
+
+uploaded_file = st.file_uploader(
+    "Upload Vehicle Image",
+    type=["jpg", "jpeg", "png"]
+)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------- IMAGE DISPLAY ---------------- #
+
+if uploaded_file:
+
+    image = Image.open(uploaded_file)
+
+   # st.markdown('<div class="section-box">', unsafe_allow_html=True)
+
+    st.subheader("Uploaded Image")
+
+    st.image(
+        image,
+        use_container_width=True
+    )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------------- DETECTION BUTTON ---------------- #
+
+    if st.button("Detect Damage"):
+
+        with st.spinner("Analyzing image..."):
+
+            # Save Temporary File
+            temp_file = tempfile.NamedTemporaryFile(
+                suffix=".jpg",
+                delete=False
+            )
+
+            image.save(temp_file.name)
+
+            # Run YOLO Model
+            result = model(temp_file.name)
+
+            detected_objects = result[0].boxes
+
+            class_ids = [
+                box.cls.item()
+                for box in detected_objects
+            ]
+
+            class_counts = Counter(class_ids)
+
+            # ---------------- NO DAMAGE ---------------- #
+
+            if not class_counts:
+
+                st.warning("No damage detected")
+
+            else:
+
+                # Save Detection Image
+                result[0].save("detected.jpg")
+
+                st.subheader("Detected Damage")
+
+                st.image(
+                    "detected.jpg",
+                    use_container_width=True
+                )
+
+                st.markdown(
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+                # ---------------- COST ESTIMATION ---------------- #
+
+                part_prices = get_part_prices(
+                    class_counts,
+                    selected_brand,
+                    selected_model
+                )
+
+                total_cost = 0
+
+                st.markdown(
+                    '<div class="section-box">',
+                    unsafe_allow_html=True
+                )
+
+                st.subheader("Damage Estimate")
+
+                for part, price in part_prices.items():
+
+                    st.write(f"🔧 {part} : ₹{price}")
+
+                    total_cost += price
+
+                st.success(
+                    f"Estimated Repair Cost: ₹{total_cost}"
+                )
+
+                st.markdown(
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+st.markdown('</div>', unsafe_allow_html=True)
